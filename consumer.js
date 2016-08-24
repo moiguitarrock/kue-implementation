@@ -1,8 +1,10 @@
 var kue = require('kue');
 var axios = require('axios');
 
+const config = require('./config');
+
 var instance = axios.create({
-  baseURL: 'http://test.api.cebroker.com/v2'
+  baseURL: config.API_BULK_POST
 });
 instance.defaults.headers.post['Content-Type'] = 'application/json';
 
@@ -13,30 +15,32 @@ var queue = kue.createQueue({
   }
 });
 
-
-queue.process('indexing-es', 20, function(job, done){
-  console.log(job.data);
-  instance.post('/search/courses', {
+queue.process('cs-indexing', 20, function(job, done){
+  instance.post('/', {
     data: job.data.jsonDoc
   })
   .then(function(response){
-    if (response.status === 200) {
-      console.log('indexed the course #' + job.data.id + ' to ES...');
-      done(null, {key: job.id, course: job.data.id, type: 'Complete', status: response.status, data: response.data});
-    } else {
-      //TODO: error flow
-      done(null, {key: job.id, course: job.data.id, type: 'Incomplete', status: response.status, data: response.data});
+    if (response.data.httpStatusCode !== 200 || response.data.httpStatusCode !== 400) {
+      return done(null,
+        { key: job.id,
+          id: job.data.id,
+          type: 'Complete with errors',
+          status: response.data.httpStatusCode,
+          data: response.data.debugInformation
+        }
+      );
     }
-
   })
   .catch(function (error) {
+    console.log(error);
     if (error.response) {
-      //TODO: error flow
-      done(null, {key: job.id, course: job.data.id, type: 'Error', status: error.response.status, data: error.response.data});
+      return done(
+        new Error(`Unexpected error: The indexation to ES failed, document: ${job.data.documentId}, Queue id is: ${job.data.id}. error: ${error.response.statusText}`)
+      );
     } else {
-      //TODO: error flow
-      done(null, {key: job.id, course: job.data.id, type: 'Error', status: 500, data: error.message});
+      return done(
+        new Error(`Unexpected error: The indexation to ES failed, document: ${job.data.documentId}, Queue id is: ${job.data.id}. error: ${error.response.statusText}`)
+      );
     }
   });
-
 });

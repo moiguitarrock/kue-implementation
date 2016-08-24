@@ -11,3 +11,5 @@ npm install pm2 -g
 
 cd /vagrant
 npm install
+
+sudo chmod 777 -R /var/log
